@@ -18,11 +18,11 @@ You need only Python 3 (standard library — no installs):
 python3 verify.py
 ```
 
-It recomputes the entire hash chain from `ledger.jsonl` and confirms the result
-matches the latest anchored head in `heads.log`. If it prints `OK`, the record is
-internally consistent and matches what we publicly committed. If anyone had
-changed, inserted, or deleted a past record, the chain would break and you would
-see `FAIL`.
+It recomputes the entire hash chain from the `ledger-*.jsonl` segment files and
+confirms the result matches the latest anchored head in `heads.log`. If it
+prints `OK`, the record is internally consistent and matches what we publicly
+committed. If anyone had changed, inserted, or deleted a past record, the chain
+would break and you would see `FAIL`.
 
 `verify.py` is a verbatim copy of the verification code ZenFlare runs internally,
 and it imports nothing outside the Python standard library — read it; it's short.
@@ -33,6 +33,11 @@ and it imports nothing outside the Python standard library — read it; it's sho
   hash includes the previous record's hash — a **hash chain**. Changing any past
   record changes every record after it, and the final "head" hash no longer
   matches what we published.
+- **The ledger is published in segments** — `ledger-0001.jsonl`,
+  `ledger-0002.jsonl`, … of 50,000 records each, because GitHub refuses single
+  files over 100 MB. The hash chain runs unbroken across file boundaries: a
+  closed segment's bytes are frozen forever (any edit to it breaks every record
+  after it, in every later segment), and only the newest segment grows.
 - **The head is anchored two ways, daily and right after each candidate trade
   resolves:**
   1. **git** — the head is committed here, so GitHub records when it was pushed.
@@ -77,7 +82,7 @@ for yourself.
 
 | File | What it is |
 |---|---|
-| `ledger.jsonl` | One record per line, including the exact `canonical` bytes that were hashed. The source of truth you recompute over. |
+| `ledger-NNNN.jsonl` | The chain, in 50,000-record segments (seq order). One record per line, including the exact `canonical` bytes that were hashed. The source of truth you recompute over. |
 | `heads.log` | Append-only. One line per anchoring run: timestamp, chain head hash, record count, and the OpenTimestamps proof path. |
 | `*.ots` | OpenTimestamps proofs (Bitcoin-anchored) for the published heads. Verify with `ots verify`. |
 | `verify.py` | The standalone, stdlib-only verifier. |

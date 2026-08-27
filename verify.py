@@ -4,11 +4,17 @@ ZenFlare ledger verifier — STANDALONE, dependency-free (Python standard librar
 only). Anyone can run this against the published files to confirm the ZenFlare
 track record is internally consistent and matches the latest anchored head:
 
-    python3 verify.py            # verifies ledger.jsonl against heads.log here
+    python3 verify.py            # verifies ledger-*.jsonl against heads.log here
     python3 verify.py <dir>      # verify files in another directory
 
+The ledger is published as segments — ledger-0001.jsonl, ledger-0002.jsonl, …
+of 50,000 records each (GitHub refuses single files over 100 MB). The hash
+chain runs unbroken across file boundaries; this verifier reads every segment
+and recomputes the whole chain. A legacy single-file ledger.jsonl is still
+accepted if no segments are present.
+
 What it does, with zero trust in ZenFlare:
-  1. For every record in ledger.jsonl, recompute SHA-256 over the exact
+  1. For every record in the ledger segments, recompute SHA-256 over the exact
      `canonical` bytes that were hashed, then the chained record hash
      SHA-256(prev_hash || payload_hash).
   2. Confirm each record links to the previous one (a hash chain): altering or
@@ -59,6 +65,16 @@ def verify_chain(records):
     return (True, prev, None)
 
 
+def _ledger_files(d):
+    """The published ledger files: sorted ledger-NNNN.jsonl segments, or the
+    legacy single ledger.jsonl if no segments are present."""
+    segments = sorted(n for n in os.listdir(d)
+                      if n.startswith("ledger-") and n.endswith(".jsonl"))
+    if segments:
+        return [os.path.join(d, n) for n in segments]
+    return [os.path.join(d, "ledger.jsonl")]
+
+
 def _latest_head(heads_path):
     """Return (head_hash, raw_line) from the last non-empty heads.log line."""
     with open(heads_path, encoding="utf-8") as f:
@@ -74,14 +90,15 @@ def _latest_head(heads_path):
 
 def main(argv):
     d = argv[1] if len(argv) > 1 else os.path.dirname(os.path.abspath(__file__))
-    ledger_path = os.path.join(d, "ledger.jsonl")
     heads_path = os.path.join(d, "heads.log")
 
+    records = []
     try:
-        with open(ledger_path, encoding="utf-8") as f:
-            records = [json.loads(ln) for ln in f if ln.strip()]
+        for path in _ledger_files(d):
+            with open(path, encoding="utf-8") as f:
+                records.extend(json.loads(ln) for ln in f if ln.strip())
     except (OSError, ValueError) as e:
-        print(f"FAIL: cannot read ledger.jsonl: {e}")
+        print(f"FAIL: cannot read ledger files: {e}")
         return 2
     records.sort(key=lambda r: r["seq"])
 
